@@ -1,22 +1,26 @@
-import login
 import requests
 import csv
 import random
 import time
 import socket
 import http.client
-import json
-from bs4 import BeautifulSoup
 import pymysql
 try:
     import cookielib
 except:
     import http.cookiejar as cookielib
 
-
-db = pymysql.connect('localhost','root','wj1312','zhihu',use_unicode=True, charset="utf8")
+#数据库初始化连接，
+db = pymysql.connect('localhost','你的用户名','你的密码','zhihu',use_unicode=True, charset="utf8")
 cursor = db.cursor()
 
+#构建request请求的headers
+#其中x-udid和authorization需要你通过浏览器自己查询，访问下面给出的例子即可
+#https://www.zhihu.com/api/v4/members/excited-vczh/answers?include=data%5B*%5D.is_normal%2Cadmin_closed_comment
+# %2Creward_info%2Cis_collapsed%2Cannotation_action%2Cannotation_detail%2Ccollapse_reason%2Ccollapsed_by%2Csuggest_edit
+# %2Ccomment_count%2Ccan_comment%2Ccontent%2Cvoteup_count%2Creshipment_settings%2Ccomment_permission%2Cmark_infos%2Ccreated_time
+# %2Cupdated_time%2Creview_info%2Crelationship.is_authorized%2Cvoting%2Cis_author%2Cis_thanked%2Cis_nothelp%2Cupvoted_followees
+# %3Bdata%5B*%5D.author.badge%5B%3F(type%3Dbest_answerer)%5D.topics&offset=20&limit=20&sort_by=created
 agent = 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Mobile Safari/537.36'
 headers = {
     'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
@@ -26,16 +30,18 @@ headers = {
     'Upgrade-Insecure-Requests': '1',
     'User-Agent': agent,
     'Connection': 'keep-alive',
-    'x-udid':'AJDC0Wn_LgyPTix8bD6HOfuNgcdh--rzr8Y=',
+    'x-udid':'你的 x-udid',
     'Referer':'https://www.zhihu.com/people/excited-vczh/following',
-    'authorization':'oauth c3cef7c66a1843f8b3a9e6a1e3160e20'
+    'authorization':'你的 authorization'
 }
 
 number = 1
 id_number = 5799
 
-
-def get_content(url, data = None):
+# 功能：   通过get方法获取知乎用户信息
+# 参数：   访问地址
+# 返回值： 用户信息，当用户信息访问失败时，返回空
+def get_content(url):
     timeout = random.choice(range(80,180))
     while True:
         try:
@@ -60,7 +66,9 @@ def get_content(url, data = None):
     else:
         return None
 
-
+# 功能：   解析JSON信息，并以列表的形式返回
+# 参数：   JSON格式的用户信息
+# 返回值： 列表形式的用户信息
 def get_data_from_json(response):
     temp = []
     html = response.json()
@@ -106,9 +114,10 @@ def get_data_from_json(response):
     temp.append(articles_count)
     return temp
 
-
+# 功能：   从数据库中选取下一个需要查询的用户
+# 参数：   用户位置
+# 返回值： 用户url地址
 def url_from_sql(id_number):
-    print('url_from_sql')
     global db,cursor
     url_token = ' '
     sql = "SELECT * from user_list WHERE id=%s" % id_number
@@ -134,7 +143,9 @@ def url_from_sql(id_number):
                                                                  r'%2Corg_homepage%2Cbadge%5B%3F(type%3Dbest_answerer)%5D.topics'
     return url
 
-
+# 功能：    从csv文件中选取下一个需要查找用户信息的用户
+# 参数：    空
+# 返回值：  用户的url地址
 def url_switch():
     file_name = 'user_data.csv'
     url_token = ' '
@@ -163,10 +174,12 @@ def url_switch():
                                                              r'%2Corg_homepage%2Cbadge%5B%3F(type%3Dbest_answerer)%5D.topics'
     return url
 
-
+# 功能：    将用户信息写入csv文件中
+# 参数：    列表形式的用户信息
+# 返回值：  空
 def write_data_file(item_data):
     file_name = 'user_info.csv'
-    # with的使用保证了在处理文件过程中无论是否发生异常，都能保证关闭
+    # with的使用保证了在处理文件过程中无论是否发生异常，都能保证关闭文件
     with open(file_name,'a',errors='ignore',newline='')as f:
         fieldnames = ['name','gender', 'education','major',
                       'company','job','location','description', 'headline','following_count','follower_count',
@@ -175,11 +188,15 @@ def write_data_file(item_data):
         global number
         if number is 1:
             writer.writeheader()
+            number = 2
         writer.writerow({'name':item_data[0], 'gender':item_data[1],  'education':item_data[2],  'major':item_data[3],
                          'company':item_data[4], 'job':item_data[5],  'location':item_data[6],  'description':item_data[7],'headline': item_data[8],
                          'following_count': item_data[9], 'follower_count': item_data[10], 'answer_count': item_data[11], 'articles_count': item_data[12],})
 
 
+# 功能：    将用户信息写入数据库中，出现错误时将用户信息写入csv文件
+# 参数：    列表形式的用户信息
+# 返回值：  空
 def write_data_sql(item_data):
     global cursor
     global db
@@ -198,16 +215,18 @@ def write_data_sql(item_data):
 
 if __name__ == '__main__':
     while True:
+        # 延时0.5到2秒，进行下次查询。
         time.sleep(random.choice(range(5,20))/10.0)
         url = url_from_sql(id_number)
         id_number += 1
         html = get_content(url)
+        # 网络连接出现异常时，继续下次循环
         if html is None:
             continue
         else:
             user_data = get_data_from_json(html)
+        # 用户数据出现异常时，继续下次循环
         if user_data is None:
             continue
         else:
-            print(user_data)
             write_data_sql(user_data)
